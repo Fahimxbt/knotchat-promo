@@ -3,6 +3,7 @@ from playwright.sync_api import sync_playwright
 import time
 from datetime import datetime
 
+# Force logs to show in Railway
 sys.stdout.reconfigure(line_buffering=True)
 
 PROMO = "@chatxbt_bot - yo bestie chat with strangers worldwide, it's free, it's anonymous, search up on telegram"
@@ -22,7 +23,7 @@ def send_message(page, message):
     for selector in selectors:
         try:
             input_box = page.locator(selector).first
-            input_box.wait_for(timeout=5000)
+            input_box.wait_for(timeout=1000)  # reduced from 5000 to 1000 for speed
             input_box.click()
             input_box.fill(message)
             input_box.press("Enter")
