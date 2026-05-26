@@ -9,10 +9,28 @@ sys.stdout.reconfigure(line_buffering=True)
 PROMO = "@chatxbt_bot - yo bestie chat with strangers worldwide, it's free, it's anonymous, search up on telegram"
 
 def send_message(page, message):
-    input_box = page.locator("input[placeholder*='message']")
-    input_box.wait_for(timeout=20000)  # increased timeout
-    input_box.fill(message)
-    input_box.press("Enter")
+    # Try multiple possible selectors for the message input
+    selectors = [
+        "input[placeholder*='message']",
+        "input[placeholder*='Message']",
+        "input[placeholder*='type']",
+        "input[placeholder*='Type']",
+        "input[placeholder*='chat']",
+        "input[placeholder*='Chat']",
+        "textarea",
+        "input[type='text']",
+    ]
+    for selector in selectors:
+        try:
+            input_box = page.locator(selector).first
+            input_box.wait_for(timeout=5000)
+            input_box.fill(message)
+            input_box.press("Enter")
+            print(f"[{datetime.now()}] Sent via selector: {selector}")
+            return
+        except:
+            continue
+    print(f"[{datetime.now()}] WARNING: Could not find message input!")
 
 def run_session(duration_hours=12):
     start_time = datetime.now()
@@ -46,14 +64,28 @@ def run_session(duration_hours=12):
                     timeout=30000
                 )
                 print(f"[{datetime.now()}] Connected")
+
+                # Take screenshot to debug input selector
+                page.screenshot(path=f"connected_{int(time.time())}.png")
+                print(f"[{datetime.now()}] Screenshot saved")
+
+                # Log all input fields on the page
+                inputs = page.locator("input, textarea").all()
+                print(f"[{datetime.now()}] Found {len(inputs)} input(s) on page")
+                for i, inp in enumerate(inputs):
+                    try:
+                        ph = inp.get_attribute("placeholder")
+                        tp = inp.get_attribute("type")
+                        print(f"  Input {i}: type={tp} placeholder={ph}")
+                    except:
+                        pass
+
                 # Send F immediately
                 send_message(page, "F")
-                # Ignore all incoming messages
                 time.sleep(3)
                 # Send promo
                 send_message(page, PROMO)
                 print(f"[{datetime.now()}] Promo sent")
-                # Wait 2 sec
                 time.sleep(2)
                 # Leave chat
                 try:
@@ -65,7 +97,6 @@ def run_session(duration_hours=12):
                     print(f"[{datetime.now()}] Left chat")
                 except:
                     print(f"[{datetime.now()}] Stranger already skipped")
-                # Wait before next chat
                 time.sleep(5)
                 # Restart
                 try:
