@@ -10,10 +10,8 @@ PROMO = "@chatxbt_bot - yo bestie chat with strangers worldwide, it's free, it's
 
 def send_message(page, message):
     selectors = [
-        # contenteditable divs (most modern chat apps use these)
         "div[contenteditable='true']",
         "[contenteditable='true']",
-        # standard inputs
         "input[placeholder*='message' i]",
         "input[placeholder*='type' i]",
         "input[placeholder*='chat' i]",
@@ -23,7 +21,7 @@ def send_message(page, message):
     for selector in selectors:
         try:
             input_box = page.locator(selector).first
-            input_box.wait_for(timeout=1000)  # reduced from 5000 to 1000 for speed
+            input_box.wait_for(timeout=1000)
             input_box.click()
             input_box.fill(message)
             input_box.press("Enter")
@@ -32,11 +30,29 @@ def send_message(page, message):
         except:
             continue
 
-    # Last resort: type via keyboard focus
+    # Try clicking bottom-center of page where chat input usually is, then type
     try:
+        page.mouse.click(760, 600)
+        time.sleep(0.5)
         page.keyboard.type(message)
         page.keyboard.press("Enter")
-        print(f"[{datetime.now()}] Sent via keyboard fallback")
+        print(f"[{datetime.now()}] Sent via mouse click + keyboard fallback")
+        return
+    except:
+        pass
+
+    # Try JS to find and focus any input/contenteditable
+    try:
+        page.evaluate("""
+            const el = document.querySelector(
+                "input:not([type='hidden']), textarea, [contenteditable='true']"
+            );
+            if (el) { el.focus(); }
+        """)
+        time.sleep(0.5)
+        page.keyboard.type(message)
+        page.keyboard.press("Enter")
+        print(f"[{datetime.now()}] Sent via JS focus + keyboard fallback")
         return
     except:
         pass
@@ -67,7 +83,7 @@ def run_session(duration_hours=12):
                 page.wait_for_selector("text=Connected", timeout=30000)
                 print(f"[{datetime.now()}] Connected")
 
-                # Wait a bit for chat UI to fully render
+                # Wait for chat UI to fully render
                 time.sleep(2)
 
                 # Debug: log all inputs including contenteditable
