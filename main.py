@@ -2,11 +2,28 @@ import sys
 from playwright.sync_api import sync_playwright
 import time
 from datetime import datetime
+import requests
 
 # Force logs to show in Railway
 sys.stdout.reconfigure(line_buffering=True)
 
 PROMO = "@chatxbt_bot - yo bestie chat with strangers worldwide, it's free, it's anonymous, search up on telegram"
+
+# ⬇️ Fill these in
+TELEGRAM_BOT_TOKEN = "8884986704:AAFU3qi5V9tARlukk4xmAMKK9dNpoliymAE"  # from @BotFather
+TELEGRAM_CHAT_ID = "642484532"      # from @userinfobot
+
+def send_screenshot(page, label="screenshot"):
+    try:
+        screenshot = page.screenshot()
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto",
+            data={"chat_id": TELEGRAM_CHAT_ID, "caption": label},
+            files={"photo": ("screen.png", screenshot, "image/png")}
+        )
+        print(f"[{datetime.now()}] Screenshot sent to Telegram: {label}")
+    except Exception as e:
+        print(f"[{datetime.now()}] Screenshot failed: {e}")
 
 def send_message(page, message):
     selectors = [
@@ -98,10 +115,17 @@ def run_session(duration_hours=12):
                     except:
                         pass
 
+                # Screenshot after connecting - see what bot sees
+                send_screenshot(page, "After connected")
+
                 send_message(page, "F")
                 time.sleep(3)
                 send_message(page, PROMO)
                 print(f"[{datetime.now()}] Promo sent")
+
+                # Screenshot after sending promo - confirm message appeared
+                send_screenshot(page, "After promo sent")
+
                 time.sleep(2)
 
                 try:
@@ -124,6 +148,8 @@ def run_session(duration_hours=12):
 
             except Exception as e:
                 print(f"[{datetime.now()}] Error: {e}")
+                # Screenshot on error to see what went wrong
+                send_screenshot(page, f"Error: {str(e)[:50]}")
                 time.sleep(10)
 
         browser.close()
