@@ -13,31 +13,24 @@ def send_message(page, message):
 
 def run_session(duration_hours=12):
     start_time = datetime.now()
-
     with sync_playwright() as p:
         browser = p.chromium.launch(
-            headless=False
+            headless=True  # FIXED: was headless=False, Railway has no display
         )
-
         page = browser.new_page()
-
         while (datetime.now() - start_time).total_seconds() < duration_hours * 3600:
-
             try:
                 print(f"[{datetime.now()}] Opening site...")
-
                 page.goto(
                     "https://knot.chat",
                     wait_until="domcontentloaded",
                     timeout=60000
                 )
-
                 # Start chatting
                 page.click(
                     "button:has-text('Start Chatting')",
                     timeout=15000
                 )
-
                 # Preference modal (optional)
                 try:
                     page.click("text=FEMALE", timeout=3000)
@@ -45,82 +38,59 @@ def run_session(duration_hours=12):
                     page.click("text=START CHATTING", timeout=3000)
                 except:
                     pass
-
                 # Wait for stranger connection
                 page.wait_for_selector(
                     "text=Connected",
                     timeout=30000
                 )
-
                 print(f"[{datetime.now()}] Connected")
-
                 # Send F immediately
                 send_message(page, "F")
-
                 # Ignore all incoming messages
                 time.sleep(3)
-
                 # Send promo
                 send_message(page, PROMO)
-
                 print(f"[{datetime.now()}] Promo sent")
-
                 # Wait 2 sec
                 time.sleep(2)
-
                 # Leave chat manually if still connected
                 try:
                     page.click("text=Leave", timeout=5000)
-
                     # Confirm leave popup if appears
                     try:
                         page.click("text=Leave", timeout=2000)
                     except:
                         pass
-
                     print(f"[{datetime.now()}] Left chat")
-
                 except:
                     print(f"[{datetime.now()}] Stranger already skipped")
-
                 # Wait before next chat
                 time.sleep(5)
-
                 # Restart
                 try:
                     page.click("text=Restart", timeout=10000)
                 except:
                     pass
-
                 time.sleep(2)
-
             except Exception as e:
                 print(f"[{datetime.now()}] Error: {e}")
-
                 try:
                     page.screenshot(
                         path=f"error_{int(time.time())}.png"
                     )
                 except:
                     pass
-
                 time.sleep(10)
-
         browser.close()
-
     print(f"[{datetime.now()}] Session complete")
 
-
-# Schedule bot daily at 08:00
-schedule.every().day.at("08:00").do(
-    run_session,
-    duration_hours=12
-)
+# ⚠️ TESTING: Change this to 2-3 mins from now in IST to confirm it works
+# e.g. if it's 8:00 PM IST, set "20:03"
+# Once confirmed, change back to "08:00"
+schedule.every().day.at("20:03").do(run_session, duration_hours=12)
 
 if __name__ == "__main__":
-
-    print("Bot scheduled. Waiting for 08:00...")
-
+    print(f"Bot scheduled. Current time: {datetime.now()} | Waiting for scheduled time...")
     while True:
         schedule.run_pending()
         time.sleep(60)
