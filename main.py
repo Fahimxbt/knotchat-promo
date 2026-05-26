@@ -1,7 +1,10 @@
+import sys
 from playwright.sync_api import sync_playwright
-import schedule
 import time
 from datetime import datetime
+
+# Force logs to show in Railway
+sys.stdout.reconfigure(line_buffering=True)
 
 PROMO = "@chatxbt_bot - yo bestie chat with strangers worldwide, it's free, it's anonymous, search up on telegram"
 
@@ -13,10 +16,9 @@ def send_message(page, message):
 
 def run_session(duration_hours=12):
     start_time = datetime.now()
+    print(f"[{datetime.now()}] Session started. Running for {duration_hours} hours...")
     with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=True  # FIXED: was headless=False, Railway has no display
-        )
+        browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         while (datetime.now() - start_time).total_seconds() < duration_hours * 3600:
             try:
@@ -53,10 +55,9 @@ def run_session(duration_hours=12):
                 print(f"[{datetime.now()}] Promo sent")
                 # Wait 2 sec
                 time.sleep(2)
-                # Leave chat manually if still connected
+                # Leave chat
                 try:
                     page.click("text=Leave", timeout=5000)
-                    # Confirm leave popup if appears
                     try:
                         page.click("text=Leave", timeout=2000)
                     except:
@@ -75,22 +76,13 @@ def run_session(duration_hours=12):
             except Exception as e:
                 print(f"[{datetime.now()}] Error: {e}")
                 try:
-                    page.screenshot(
-                        path=f"error_{int(time.time())}.png"
-                    )
+                    page.screenshot(path=f"error_{int(time.time())}.png")
                 except:
                     pass
                 time.sleep(10)
         browser.close()
     print(f"[{datetime.now()}] Session complete")
 
-# ⚠️ TESTING: Change this to 2-3 mins from now in IST to confirm it works
-# e.g. if it's 8:00 PM IST, set "20:03"
-# Once confirmed, change back to "08:00"
-schedule.every().day.at("20:03").do(run_session, duration_hours=12)
-
 if __name__ == "__main__":
-    print(f"Bot scheduled. Current time: {datetime.now()} | Waiting for scheduled time...")
-    while True:
-        schedule.run_pending()
-        time.sleep(60)
+    print(f"[{datetime.now()}] Bot starting immediately...")
+    run_session(duration_hours=12)
