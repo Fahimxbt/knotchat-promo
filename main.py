@@ -9,115 +9,129 @@ sys.stdout.reconfigure(line_buffering=True)
 PROMO = "@chatxbt_bot - yo bestie chat with strangers worldwide, it's free, it's anonymous, search up on telegram"
 
 
-def send_message(page, message):
-    """Send a message to the chat input with multiple fallback strategies."""
+def send_message(page, message, max_retries=3):
+    """Send a message to the chat input with retry logic and multiple fallback strategies."""
 
-    # Comprehensive list of selectors for chat inputs
-    selectors = [
-        # Contenteditable (most modern chat apps use this)
-        "div[contenteditable='true']",
-        "[contenteditable='true']",
-        "div[role='textbox']",
-        "[role='textbox']",
-        # Input fields with various placeholders
-        "input[placeholder*='message' i]",
-        "input[placeholder*='type' i]",
-        "input[placeholder*='chat' i]",
-        "input[placeholder*='send' i]",
-        "input[placeholder*='text' i]",
-        "input[placeholder*='say' i]",
-        # Generic inputs
-        "textarea",
-        "textarea:not([readonly])",
-        "input[type='text']",
-        "input:not([type='hidden']):not([type='submit']):not([type='button']):not([type='checkbox']):not([type='radio'])",
-        # Common chat app specific selectors
-        "[data-testid='message-input']",
-        "[data-testid='chat-input']",
-        "[data-testid='composer']",
-        ".message-input",
-        ".chat-input",
-        ".composer",
-        "#message-input",
-        "#chat-input",
-        # Form-based inputs
-        "form input",
-        "form textarea",
-        "form [contenteditable]",
-    ]
+    for attempt in range(max_retries):
+        print(f"[{datetime.now()}] Message send attempt {attempt + 1}/{max_retries}")
 
-    # Try each selector
-    for selector in selectors:
-        try:
-            locator = page.locator(selector)
-            count = locator.count()
-            if count == 0:
+        # Comprehensive list of selectors for chat inputs
+        selectors = [
+            # Contenteditable (most modern chat apps use this)
+            "div[contenteditable='true']",
+            "[contenteditable='true']",
+            "div[role='textbox']",
+            "[role='textbox']",
+            # Input fields with various placeholders
+            "input[placeholder*='message' i]",
+            "input[placeholder*='type' i]",
+            "input[placeholder*='chat' i]",
+            "input[placeholder*='send' i]",
+            "input[placeholder*='text' i]",
+            "input[placeholder*='say' i]",
+            # Generic inputs
+            "textarea",
+            "textarea:not([readonly])",
+            "input[type='text']",
+            "input:not([type='hidden']):not([type='submit']):not([type='button']):not([type='checkbox']):not([type='radio'])",
+            # Common chat app specific selectors
+            "[data-testid='message-input']",
+            "[data-testid='chat-input']",
+            "[data-testid='composer']",
+            ".message-input",
+            ".chat-input",
+            ".composer",
+            "#message-input",
+            "#chat-input",
+            # Form-based inputs
+            "form input",
+            "form textarea",
+            "form [contenteditable]",
+        ]
+
+        # Try each selector
+        for selector in selectors:
+            try:
+                locator = page.locator(selector)
+                count = locator.count()
+                if count == 0:
+                    continue
+
+                # Check first 3 matches for visibility
+                for i in range(min(count, 3)):
+                    el = locator.nth(i)
+                    try:
+                        if el.is_visible(timeout=2000):
+                            el.scroll_into_view_if_needed()
+                            el.click()
+                            time.sleep(0.5)
+
+                            if "contenteditable" in selector or "role='textbox'" in selector:
+                                el.click()
+                                page.keyboard.type(message)
+                            else:
+                                el.fill(message)
+
+                            page.keyboard.press("Enter")
+                            print(f"[{datetime.now()}] Sent via selector: {selector} (index {i})")
+                            return True
+                    except Exception:
+                        continue
+            except Exception:
                 continue
 
-            # Check first 3 matches for visibility
-            for i in range(min(count, 3)):
-                el = locator.nth(i)
-                try:
-                    if el.is_visible(timeout=2000):
-                        el.scroll_into_view_if_needed()
-                        el.click()
-                        time.sleep(0.5)
+        # JS fallback — comprehensive DOM search
+        try:
+            result = page.evaluate("""
+                () => {
+                    const selectors = [
+                        "input:not([type='hidden']):not([type='submit']):not([type='button']):not([type='checkbox']):not([type='radio']):not([disabled])",
+                        "textarea:not([readonly]):not([disabled])",
+                        "[contenteditable='true']",
+                        "[role='textbox']",
+                        "[contenteditable]"
+                    ];
 
-                        if "contenteditable" in selector or "role='textbox'" in selector:
-                            el.click()
-                            page.keyboard.type(message)
-                        else:
-                            el.fill(message)
-
-                        page.keyboard.press("Enter")
-                        print(f"[{datetime.now()}] Sent via selector: {selector} (index {i})")
-                        return True
-                except Exception:
-                    continue
-        except Exception:
-            continue
-
-    # JS fallback — comprehensive DOM search
-    try:
-        result = page.evaluate("""
-            (function() {
-                const selectors = [
-                    "input:not([type='hidden']):not([type='submit']):not([type='button']):not([type='checkbox']):not([type='radio']):not([disabled])",
-                    "textarea:not([readonly]):not([disabled])",
-                    "[contenteditable='true']",
-                    "[role='textbox']",
-                    "[contenteditable]"
-                ];
-
-                for (const sel of selectors) {
-                    const els = document.querySelectorAll(sel);
-                    for (const el of els) {
-                        const rect = el.getBoundingClientRect();
-                        const style = window.getComputedStyle(el);
-                        if (rect.width > 0 && rect.height > 0 && 
-                            style.display !== 'none' && style.visibility !== 'hidden' &&
-                            style.opacity !== '0' && !el.disabled) {
-                            el.focus();
-                            el.click();
-                            return {found: true, tag: el.tagName, class: el.className, id: el.id};
+                    for (const sel of selectors) {
+                        const els = document.querySelectorAll(sel);
+                        for (const el of els) {
+                            const rect = el.getBoundingClientRect();
+                            const style = window.getComputedStyle(el);
+                            if (rect.width > 0 && rect.height > 0 && 
+                                style.display !== 'none' && style.visibility !== 'hidden' &&
+                                style.opacity !== '0' && !el.disabled) {
+                                el.focus();
+                                el.click();
+                                return {found: true, tag: el.tagName, class: el.className, id: el.id};
+                            }
                         }
                     }
+                    return {found: false};
                 }
-                return {found: false};
-            })()
-        """)
+            """)
 
-        if result and result.get('found'):
-            print(f"[{datetime.now()}] JS fallback found element: {result}")
-            time.sleep(0.5)
-            page.keyboard.type(message)
-            page.keyboard.press("Enter")
-            print(f"[{datetime.now()}] Sent via JS focus + keyboard fallback")
-            return True
-    except Exception as e:
-        print(f"[{datetime.now()}] JS fallback error: {e}")
+            if result and result.get('found'):
+                print(f"[{datetime.now()}] JS fallback found element: {result}")
+                time.sleep(0.5)
+                page.keyboard.type(message)
+                page.keyboard.press("Enter")
+                print(f"[{datetime.now()}] Sent via JS focus + keyboard fallback")
+                return True
+        except Exception as e:
+            print(f"[{datetime.now()}] JS fallback error: {e}")
 
-    print(f"[{datetime.now()}] WARNING: Could not find message input!")
+        # Wait before retry
+        if attempt < max_retries - 1:
+            wait_time = 3 * (attempt + 1)
+            print(f"[{datetime.now()}] Waiting {wait_time}s before retry...")
+            time.sleep(wait_time)
+            # Try to wait for any new elements to appear
+            try:
+                page.wait_for_load_state("networkidle", timeout=5000)
+            except:
+                pass
+
+    print(f"[{datetime.now()}] WARNING: Could not find message input after {max_retries} attempts!")
     return False
 
 
@@ -162,46 +176,109 @@ def wait_for_connection(page, timeout_per_selector=10000):
     return False
 
 
+def wait_for_chat_input(page, max_wait_seconds=30):
+    """Wait for chat input to appear with polling."""
+    print(f"[{datetime.now()}] Waiting for chat input to appear...")
+
+    start_time = time.time()
+    check_interval = 2
+
+    while time.time() - start_time < max_wait_seconds:
+        try:
+            # Check for any input-like elements
+            inputs = page.locator("input, textarea, [contenteditable='true'], [role='textbox']").all()
+            visible_inputs = []
+
+            for inp in inputs:
+                try:
+                    if inp.is_visible():
+                        visible_inputs.append(inp)
+                except:
+                    pass
+
+            if visible_inputs:
+                print(f"[{datetime.now()}] Found {len(visible_inputs)} visible input(s) after {int(time.time() - start_time)}s")
+                return True
+
+            # Also check via JS for any editable elements
+            has_input = page.evaluate("""
+                () => {
+                    const all = document.querySelectorAll('input, textarea, [contenteditable="true"], [role="textbox"]');
+                    for (const el of all) {
+                        const rect = el.getBoundingClientRect();
+                        const style = window.getComputedStyle(el);
+                        if (rect.width > 0 && rect.height > 0 && 
+                            style.display !== 'none' && style.visibility !== 'hidden') {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            """)
+
+            if has_input:
+                print(f"[{datetime.now()}] Found input via JS check after {int(time.time() - start_time)}s")
+                return True
+
+        except Exception as e:
+            print(f"[{datetime.now()}] Error checking inputs: {e}")
+
+        time.sleep(check_interval)
+
+    print(f"[{datetime.now()}] Timeout: No chat input found after {max_wait_seconds}s")
+    return False
+
+
 def log_page_inputs(page):
     """Debug: Log all input elements found on the page."""
     try:
         inputs = page.locator("input, textarea, [contenteditable='true'], [role='textbox']").all()
-        print(f"[{datetime.now()}] Found {len(inputs)} input(s) on page")
-        for i, inp in enumerate(inputs[:10]):
+        print(f"[{datetime.now()}] Found {len(inputs)} total input(s) on page")
+
+        visible_count = 0
+        for i, inp in enumerate(inputs[:15]):  # Check up to 15
             try:
                 ph = inp.get_attribute("placeholder") or "N/A"
                 tp = inp.get_attribute("type") or "N/A"
                 ce = inp.get_attribute("contenteditable") or "N/A"
                 role = inp.get_attribute("role") or "N/A"
                 cls = inp.get_attribute("class") or "N/A"
+                id_attr = inp.get_attribute("id") or "N/A"
                 visible = inp.is_visible()
-                print(f"  Input {i}: type={tp} placeholder={ph} contenteditable={ce} role={role} class={cls} visible={visible}")
+                if visible:
+                    visible_count += 1
+                print(f"  Input {i}: tag={inp.evaluate('el => el.tagName')} type={tp} placeholder={ph} contenteditable={ce} role={role} class={cls} id={id_attr} visible={visible}")
             except Exception as e:
-                print(f"  Input {i}: Error getting attributes: {e}")
+                print(f"  Input {i}: Error: {e}")
+
+        print(f"[{datetime.now()}] {visible_count} visible input(s) found")
     except Exception as e:
         print(f"[{datetime.now()}] Error listing inputs: {e}")
 
 
-def log_html_snippet(page):
-    """Debug: Log HTML snippet around potential input areas."""
+def log_page_structure(page):
+    """Debug: Log key page structure elements."""
     try:
-        html_snippet = page.evaluate("""
-            (function() {
-                const possibleAreas = document.querySelectorAll(
-                    'footer, .chat-footer, .input-area, .message-area, form, [class*="input"], [class*="chat"]'
-                );
-                let html = '';
-                for (const area of possibleAreas) {
-                    if (area.innerHTML.length > 0) {
-                        html += area.tagName + (area.className ? '.' + area.className : '') + ':\n' + area.innerHTML.substring(0, 500) + '\n\n';
+        structure = page.evaluate("""
+            () => {
+                const result = {
+                    title: document.title,
+                    bodyChildren: document.body.children.length,
+                    iframes: document.querySelectorAll('iframe').length,
+                    shadowHosts: document.querySelectorAll('*').length,
+                    hasChatClasses: {
+                        chat: document.querySelectorAll('[class*="chat"]').length,
+                        message: document.querySelectorAll('[class*="message"]').length,
+                        input: document.querySelectorAll('[class*="input"]').length,
+                        composer: document.querySelectorAll('[class*="composer"]').length
                     }
-                }
-                return html || document.body.innerHTML.substring(0, 2000);
-            })()
+                };
+                return result;
+            }
         """)
-        print(f"[{datetime.now()}] HTML snippet: {html_snippet[:1500]}")
+        print(f"[{datetime.now()}] Page structure: {structure}")
     except Exception as e:
-        print(f"[{datetime.now()}] Error getting HTML: {e}")
+        print(f"[{datetime.now()}] Error getting page structure: {e}")
 
 
 def run_session(duration_hours=12):
@@ -269,18 +346,26 @@ def run_session(duration_hours=12):
                 # Wait for connection
                 wait_for_connection(page)
 
-                # Give chat UI time to render
-                time.sleep(5)
+                # CRITICAL FIX: Wait for chat input to actually appear
+                # The input loads dynamically after connection
+                chat_input_ready = wait_for_chat_input(page, max_wait_seconds=30)
+
+                if not chat_input_ready:
+                    print(f"[{datetime.now()}] Chat input not found, skipping to next iteration...")
+                    time.sleep(5)
+                    continue
+
+                # Additional wait for network to settle
                 try:
                     page.wait_for_load_state("networkidle", timeout=10000)
                 except Exception:
                     pass
 
                 # Debug logging
+                log_page_structure(page)
                 log_page_inputs(page)
-                log_html_snippet(page)
 
-                # Send messages
+                # Send messages with retry
                 send_message(page, "F")
                 time.sleep(3)
                 send_message(page, PROMO)
