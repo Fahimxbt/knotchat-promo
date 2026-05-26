@@ -9,7 +9,6 @@ sys.stdout.reconfigure(line_buffering=True)
 PROMO = "@chatxbt_bot - yo bestie chat with strangers worldwide, it's free, it's anonymous, search up on telegram"
 
 def send_message(page, message):
-    # Try multiple possible selectors for the message input
     selectors = [
         "input[placeholder*='message']",
         "input[placeholder*='Message']",
@@ -65,10 +64,6 @@ def run_session(duration_hours=12):
                 )
                 print(f"[{datetime.now()}] Connected")
 
-                # Take screenshot to debug input selector
-                page.screenshot(path=f"connected_{int(time.time())}.png")
-                print(f"[{datetime.now()}] Screenshot saved")
-
                 # Log all input fields on the page
                 inputs = page.locator("input, textarea").all()
                 print(f"[{datetime.now()}] Found {len(inputs)} input(s) on page")
@@ -106,10 +101,6 @@ def run_session(duration_hours=12):
                 time.sleep(2)
             except Exception as e:
                 print(f"[{datetime.now()}] Error: {e}")
-                try:
-                    page.screenshot(path=f"error_{int(time.time())}.png")
-                except:
-                    pass
                 time.sleep(10)
         browser.close()
     print(f"[{datetime.now()}] Session complete")
