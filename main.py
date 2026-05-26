@@ -10,7 +10,7 @@ PROMO = "@chatxbt_bot - yo bestie chat with strangers worldwide, it's free, it's
 
 def send_message(page, message):
     input_box = page.locator("input[placeholder*='message']")
-    input_box.wait_for(timeout=10000)
+    input_box.wait_for(timeout=20000)  # increased timeout
     input_box.fill(message)
     input_box.press("Enter")
 
