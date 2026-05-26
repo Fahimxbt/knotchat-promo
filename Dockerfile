@@ -1,6 +1,5 @@
 FROM python:3.11-slim
 
-# Install system dependencies for Playwright/Chromium
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -16,7 +15,7 @@ RUN apt-get update && apt-get install -y \
     libexpat1 \
     libfontconfig1 \
     libgbm1 \
-    libgcc1 \
+    libgcc-s1 \
     libglib2.0-0 \
     libgtk-3-0 \
     libnspr4 \
@@ -41,19 +40,13 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
-# Copy requirements and install Python deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install Playwright browsers
 RUN playwright install chromium
 RUN playwright install-deps chromium
 
-# Copy app code
 COPY . .
 
-# Run the bot
 CMD ["python", "main.py"]
