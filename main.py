@@ -238,7 +238,6 @@ def wait_for_connection(page, timeout_per_selector=10000):
         ".connected",
         "[data-status='connected']",
         ".chat-active",
-        "text=Connected"  # The green dot text
     ]
 
     for sel in connection_selectors:
@@ -308,6 +307,30 @@ def wait_for_chat_input_v2(page, max_wait_seconds=30):
 
     print(f"[{datetime.now()}] Timeout: No chat input found after {max_wait_seconds}s")
     return False
+
+
+def detect_page_state(page):
+    """Detect which screen we're currently on."""
+    try:
+        state = page.evaluate("""
+            () => {
+                const html = document.body.innerHTML.toLowerCase();
+                return {
+                    hasAuthModal: html.includes('sign in anonymously') || html.includes('continue with google') || html.includes('phone number'),
+                    hasGenderSelection: html.includes('male') && html.includes('female') && html.includes('age group'),
+                    hasChatInterface: html.includes('type a message') || html.includes('send') || html.includes('leave'),
+                    hasSecurityCheck: html.includes('security check') || html.includes('cloudflare') || html.includes('verifying'),
+                    hasStartButton: html.includes('start chatting'),
+                    url: window.location.href,
+                    title: document.title
+                };
+            }
+        """)
+        print(f"[{datetime.now()}] Page state: {state}")
+        return state
+    except Exception as e:
+        print(f"[{datetime.now()}] Error detecting page state: {e}")
+        return {}
 
 
 def log_page_structure(page):
@@ -403,102 +426,183 @@ def run_session(duration_hours=12):
 
                 time.sleep(3)
 
-                # Step 1: Click Start Chatting
-                start_selectors = [
-                    "text=Start",
-                    "text=Chat",
-                    "text=Begin",
-                    "button:has-text('Chat')",
-                    "[data-testid='start-chat']",
-                    ".start-button",
-                    "#start-chat",
-                    "button:has-text('Start Chatting')"
-                ]
-                click_element_with_fallbacks(
-                    page, 
-                    "button:has-text('Start Chatting')", 
-                    start_selectors, 
-                    timeout=15000, 
-                    label="Start Chatting"
-                )
+                # Detect current page state
+                state = detect_page_state(page)
 
-                time.sleep(2)
+                # Step 1: Click Start Chatting (if on homepage)
+                if state.get('hasStartButton', False):
+                    start_selectors = [
+                        "text=Start",
+                        "text=Chat",
+                        "text=Begin",
+                        "button:has-text('Chat')",
+                        "[data-testid='start-chat']",
+                        ".start-button",
+                        "#start-chat",
+                        "button:has-text('Start Chatting')"
+                    ]
+                    click_element_with_fallbacks(
+                        page, 
+                        "button:has-text('Start Chatting')", 
+                        start_selectors, 
+                        timeout=15000, 
+                        label="Start Chatting"
+                    )
+                    time.sleep(2)
+                    state = detect_page_state(page)
 
-                # Step 2: Click Sign In Anonymously (NEW - handles the auth modal)
-                auth_selectors = [
-                    "text=Sign In Anonymously",
-                    "text=Anonymous",
-                    "text=Sign In",
-                    "button:has-text('Anonymous')",
-                    "button:has-text('Sign In')",
-                    "[data-testid='anonymous-signin']",
-                    ".anonymous-button",
-                    "#anonymous-signin"
-                ]
-                click_element_with_fallbacks(
-                    page,
-                    "text=Sign In Anonymously",
-                    auth_selectors,
-                    timeout=10000,
-                    label="Sign In Anonymously"
-                )
+                # Step 2: Handle Auth Modal (Sign In Anonymously)
+                if state.get('hasAuthModal', False):
+                    print(f"[{datetime.now()}] Auth modal detected, clicking Sign In Anonymously...")
 
-                time.sleep(3)
+                    # Try multiple strategies to find and click the anonymous button
+                    auth_clicked = False
 
-                # Step 3: Handle Cloudflare / Security Check
-                # Wait a bit for CAPTCHA to process (or fail)
-                print(f"[{datetime.now()}] Waiting for security check...")
-                time.sleep(8)
+                    # Strategy 1: Direct text match
+                    auth_selectors = [
+                        "text=Sign In Anonymously",
+                        "text=Anonymous",
+                        "text=Sign In",
+                        "button:has-text('Anonymous')",
+                        "button:has-text('Sign In')",
+                    ]
+                    for sel in auth_selectors:
+                        try:
+                            page.click(sel, timeout=3000)
+                            print(f"[{datetime.now()}] Clicked auth via: {sel}")
+                            auth_clicked = True
+                            break
+                        except:
+                            continue
 
-                # Check if we're past the security check
-                try:
-                    # If gender selection appears, we're past it
-                    page.wait_for_selector("text=MALE", timeout=5000)
-                    print(f"[{datetime.now()}] Past security check - gender selection visible")
-                except:
-                    print(f"[{datetime.now()}] Security check may still be processing or failed")
-                    # Try clicking "Back to options" and retry anonymous
-                    try:
-                        page.click("text=Back to options", timeout=3000)
-                        time.sleep(1)
-                        click_element_with_fallbacks(
-                            page,
-                            "text=Sign In Anonymously",
-                            auth_selectors,
-                            timeout=5000,
-                            label="Retry Sign In Anonymously"
-                        )
-                        time.sleep(8)
-                    except:
-                        pass
+                    # Strategy 2: Look for buttons in the modal/dialog
+                    if not auth_clicked:
+                        try:
+                            buttons = page.locator("button, [role='button']").all()
+                            for btn in buttons:
+                                try:
+                                    text = btn.inner_text()
+                                    if text and ('anonymous' in text.lower() or 'sign in' in text.lower()):
+                                        btn.click()
+                                        print(f"[{datetime.now()}] Clicked auth button with text: {text}")
+                                        auth_clicked = True
+                                        break
+                                except:
+                                    continue
+                        except Exception as e:
+                            print(f"[{datetime.now()}] Auth button search error: {e}")
+
+                    # Strategy 3: JS click on first button in modal
+                    if not auth_clicked:
+                        try:
+                            page.evaluate("""
+                                () => {
+                                    const modal = document.querySelector('dialog, [role="dialog"], .modal, [class*="modal"]');
+                                    if (modal) {
+                                        const btn = modal.querySelector('button');
+                                        if (btn) { btn.click(); return true; }
+                                    }
+                                    // Try any button that looks like primary action
+                                    const buttons = document.querySelectorAll('button');
+                                    for (const btn of buttons) {
+                                        const style = window.getComputedStyle(btn);
+                                        if (style.backgroundColor.includes('rgb(220, 95, 95)') || 
+                                            style.backgroundColor.includes('rgb(220.95.95)')) {
+                                            btn.click();
+                                            return true;
+                                        }
+                                    }
+                                    return false;
+                                }
+                            """)
+                            print(f"[{datetime.now()}] Attempted JS auth click")
+                            auth_clicked = True
+                        except Exception as e:
+                            print(f"[{datetime.now()}] JS auth click error: {e}")
+
+                    if not auth_clicked:
+                        print(f"[{datetime.now()}] FAILED: Could not click Sign In Anonymously")
+                        time.sleep(5)
+                        continue
+
+                    time.sleep(3)
+
+                    # Wait for security check
+                    print(f"[{datetime.now()}] Waiting for security check...")
+                    time.sleep(10)
+
+                    # Check state again
+                    state = detect_page_state(page)
+
+                # Step 3: Handle Security Check / CAPTCHA
+                if state.get('hasSecurityCheck', False):
+                    print(f"[{datetime.now()}] Security check/CAPTCHA detected, waiting longer...")
+                    time.sleep(15)  # Give more time for CAPTCHA
+                    state = detect_page_state(page)
+
+                    if state.get('hasSecurityCheck', False):
+                        print(f"[{datetime.now()}] CAPTCHA still present, skipping iteration...")
+                        time.sleep(5)
+                        continue
 
                 # Step 4: Gender/age selection
-                try:
-                    page.click("text=FEMALE", timeout=3000)
-                    print(f"[{datetime.now()}] Selected FEMALE")
-                except Exception:
-                    pass
+                if state.get('hasGenderSelection', False):
+                    try:
+                        page.click("text=FEMALE", timeout=3000)
+                        print(f"[{datetime.now()}] Selected FEMALE")
+                    except Exception:
+                        pass
 
-                try:
-                    page.click("text=25+", timeout=3000)
-                    print(f"[{datetime.now()}] Selected 25+")
-                except Exception:
-                    pass
+                    try:
+                        page.click("text=25+", timeout=3000)
+                        print(f"[{datetime.now()}] Selected 25+")
+                    except Exception:
+                        pass
 
-                try:
-                    page.click("text=START CHATTING", timeout=3000)
-                    print(f"[{datetime.now()}] Clicked START CHATTING")
-                except Exception:
-                    pass
+                    try:
+                        page.click("text=START CHATTING", timeout=3000)
+                        print(f"[{datetime.now()}] Clicked START CHATTING")
+                    except Exception:
+                        pass
 
-                # Step 5: Wait for connection
+                    time.sleep(3)
+                    state = detect_page_state(page)
+
+                # Step 5: Verify we're actually in chat before waiting for input
+                if not state.get('hasChatInterface', False):
+                    print(f"[{datetime.now()}] Not in chat interface yet, current state: {state}")
+                    # Try clicking Start Chatting again if we see the button
+                    if state.get('hasStartButton', False):
+                        click_element_with_fallbacks(
+                            page, 
+                            "button:has-text('Start Chatting')", 
+                            ["text=Start", "text=Chat"], 
+                            timeout=5000, 
+                            label="Retry Start Chatting"
+                        )
+                        time.sleep(3)
+                        state = detect_page_state(page)
+
+                    if not state.get('hasChatInterface', False):
+                        print(f"[{datetime.now()}] Still not in chat, skipping iteration...")
+                        time.sleep(5)
+                        continue
+
+                # Step 6: Wait for connection indicator
                 wait_for_connection(page)
 
-                # Step 6: Wait for chat input
+                # Step 7: Wait for chat input
                 chat_input_ready = wait_for_chat_input_v2(page, max_wait_seconds=30)
 
                 if not chat_input_ready:
-                    print(f"[{datetime.now()}] Chat input not found, skipping to next iteration...")
+                    print(f"[{datetime.now()}] Chat input not found, checking page state...")
+                    state = detect_page_state(page)
+
+                    if not state.get('hasChatInterface', False):
+                        print(f"[{datetime.now()}] Not in chat interface, skipping to next iteration...")
+                    else:
+                        print(f"[{datetime.now()}] In chat but no input found, may need different selector...")
+
                     time.sleep(5)
                     continue
 
@@ -510,14 +614,14 @@ def run_session(duration_hours=12):
                 # Debug logging
                 log_page_structure(page)
 
-                # Step 7: Send messages
+                # Step 8: Send messages
                 send_message_v2(page, "F")
                 time.sleep(3)
                 send_message_v2(page, PROMO)
                 print(f"[{datetime.now()}] Promo sent")
                 time.sleep(2)
 
-                # Step 8: Leave chat
+                # Step 9: Leave chat
                 leave_selectors = [
                     "text=leave",
                     "text=Skip",
@@ -540,7 +644,7 @@ def run_session(duration_hours=12):
 
                 time.sleep(5)
 
-                # Step 9: Restart
+                # Step 10: Restart
                 restart_selectors = [
                     "text=restart",
                     "text=Start New",
