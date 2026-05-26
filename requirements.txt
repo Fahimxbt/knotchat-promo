@@ -1,3 +1,1 @@
 playwright
-schedule
-requests
